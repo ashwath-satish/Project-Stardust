@@ -153,6 +153,98 @@ const ASSETS = [
       { id: 'woodenTile_default', name: 'Default', img: 'items/woodenTile.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
     ]
   }
+  ,
+  {
+    id: 'metalTile',
+    name: 'Metal Tile',
+    cost: 5,
+    weight: 30,
+    variations: [
+      { id: 'metalTile_default', name: 'Default', img: 'items/metalTile.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'metalBlock',
+    name: 'Metal Block',
+    cost: 15,
+    weight: 250,
+    variations: [
+      { id: 'metalBlock_default', name: 'Default', img: 'items/metalBlock.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'flowers',
+    name: 'Flowers',
+    cost: 2,
+    weight: 1,
+    variations: [
+      { id: 'flowers_default', name: 'Default', img: 'items/flowers.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'toilet',
+    name: 'Toilet',
+    cost: 18,
+    weight: 40,
+    variations: [
+      { id: 'toilet_default', name: 'Default', img: 'items/toilet.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'satellite',
+    name: 'Satellite',
+    cost: 200,
+    weight: 100,
+    variations: [
+      { id: 'satellite_default', name: 'Default', img: 'items/satellite.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'incinerator',
+    name: 'Incinerator',
+    cost: 50,
+    weight: 80,
+    variations: [
+      { id: 'incinerator_default', name: 'Default', img: 'items/incinerator.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'filtration',
+    name: 'Filtration',
+    cost: 80,
+    weight: 40,
+    variations: [
+      { id: 'filtration_default', name: 'Default', img: 'items/filtration.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'canisters',
+    name: 'Canisters',
+    cost: 6,
+    weight: 15,
+    variations: [
+      { id: 'canisters_default', name: 'Default', img: 'items/canisters.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'mattress',
+    name: 'Mattress',
+    cost: 10,
+    weight: 12,
+    variations: [
+      { id: 'mattress_default', name: 'Default', img: 'items/mattress.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
+    id: 'stove',
+    name: 'Stove',
+    cost: 30,
+    energyConsumption: 2,
+    weight: 22,
+    variations: [
+      { id: 'stove_default', name: 'Default', img: 'items/stove.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  }
 ];
 
 let money = 100000;
@@ -284,8 +376,8 @@ let camGoal = { x:0,y:0,zoom:1 };
 let isPanning=false, panStart={};
 let mouse={x:0,y:0,gridX:0,gridY:0,overCanvas:false};
 let rightClickStart = null; 
-// shift-placement state: when user Shift+left-clicks we record the start
-let shiftPlacementStart = null; // { gx, gy }
+
+let shiftPlacementStart = null; 
 let shiftPlacementActive = false;
 
 const itemsList=document.getElementById('itemsList');
@@ -402,7 +494,7 @@ canvas.addEventListener('mousedown',e=>{
     
   }
   if(e.button===0){
-    // If Shift is held, start a placement rectangle preview
+    
     if(e.shiftKey){
       shiftPlacementStart = { gx: mouse.gridX, gy: mouse.gridY };
       shiftPlacementActive = true;
@@ -427,17 +519,17 @@ window.addEventListener('mouseup',e=>{
     rightClickStart = null;
   }
   if(e.button===0){
-    // If we were doing a shift-rectangle placement, finalize it now
+    
     if(shiftPlacementActive && shiftPlacementStart){
       const start = shiftPlacementStart;
       const end = { gx: mouse.gridX, gy: mouse.gridY };
-      // compute bounding rectangle inclusive
+      
       const x0 = Math.min(start.gx, end.gx);
       const x1 = Math.max(start.gx, end.gx);
       const y0 = Math.min(start.gy, end.gy);
       const y1 = Math.max(start.gy, end.gy);
 
-      // Place tiles in scan order (y then x) to feel natural
+      
       for(let gy = y0; gy <= y1; gy++){
         for(let gx = x0; gx <= x1; gx++){
           placeItemAt(gx,gy);
@@ -478,6 +570,7 @@ function deleteItemsAt(gx,gy,layer){
   
   placed.length = 0;
   remaining.forEach(x=>placed.push(x));
+  saveToLocalStorageDebounced();
 }
 
 window.addEventListener('keydown',e=>{
@@ -549,7 +642,7 @@ function placeItemAt(gx,gy){
   const placedAssetId = (p) => p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]);
 
   const itemsOnTile = placed.filter(pp => pp.x===gx && pp.y===gy && ((pp.layer||1)===currentLayer));
-  // ignore procedurally generated moons when checking occupancy so they don't block placement
+  
   const occupancyCandidates = itemsOnTile.filter(pp => (pp.assetId !== 'moon' && pp.assetId !== 'miniMoon'));
   const existingCarpet = occupancyCandidates.some(pp => isCarpetAsset(placedAssetId(pp)));
   const existingNonCarpet = occupancyCandidates.some(pp => !isCarpetAsset(placedAssetId(pp)));
@@ -565,6 +658,7 @@ function placeItemAt(gx,gy){
   
   placed.push({x:gx,y:gy,var:selectedVariation,flip:selectedFlip,layer:currentLayer,assetId:selectedItem.id});
   money-=selectedItem.cost;highlightSelectedInUI();
+  saveToLocalStorageDebounced();
 }
 
 function drawGrid(cx,cy,range=12){
@@ -594,17 +688,17 @@ function drawImageOnTile(gx, gy, varData, alpha = 1) {
   let h = (img.height / img.width) * base;
   h *= 0.875;
 
-  // compute where the image would be drawn (top-left)
+  
   const drawX = s.x - w / 2 + (varData.offsetX || 0) * cam.zoom;
   const drawY = s.y - h / 2 + (varData.offsetY || 0) * cam.zoom;
 
-  // bounding box test: if the image rect is fully offscreen AND it would be faded out, skip rendering
+  
   const bboxLeft = drawX;
   const bboxTop = drawY;
   const bboxRight = drawX + w;
   const bboxBottom = drawY + h;
 
-  // distance from center to nearest canvas edge (used for edge fade)
+  
   const distToLeft = s.x;
   const distToRight = canvas.width - s.x;
   const distToTop = s.y;
@@ -617,8 +711,8 @@ function drawImageOnTile(gx, gy, varData, alpha = 1) {
 
   const finalAlpha = alpha * edgeAlpha;
 
-  // If alpha is effectively invisible, or if it's both offscreen and faded out, skip drawing
-  const OFFSCREEN_MARGIN = 0; // no extra margin for strict offscreen test
+  
+  const OFFSCREEN_MARGIN = 0; 
   const fullyOffscreen = (bboxRight < -OFFSCREEN_MARGIN) || (bboxLeft > canvas.width + OFFSCREEN_MARGIN) || (bboxBottom < -OFFSCREEN_MARGIN) || (bboxTop > canvas.height + OFFSCREEN_MARGIN);
 
   if (finalAlpha <= 0.01 || (fullyOffscreen && finalAlpha <= 0.02)) return;
@@ -628,7 +722,7 @@ function drawImageOnTile(gx, gy, varData, alpha = 1) {
 
   const flip = varData.flip || varData.__flip || 'left';
   if (flip === 'right') {
-    // flip horizontally around the image center
+    
     ctx.translate(drawX + w / 2, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(img, -w / 2, drawY, w, h);
@@ -694,7 +788,7 @@ function draw(){
     
     const previewVar = Object.assign({}, selectedVariation, { flip: selectedFlip });
     
-  // ignore moons for the preview occupancy check as well
+  
   const occupied = placed.some(pp=>pp.x===mouse.gridX && pp.y===mouse.gridY && ((pp.layer||1)===currentLayer) && pp.assetId !== 'moon' && pp.assetId !== 'miniMoon');
     if(occupied){
       
@@ -713,14 +807,14 @@ function draw(){
     } else {
       drawImageOnTile(mouse.gridX,mouse.gridY,previewVar,0.5);
     }
-    // If shift-placement is active, draw a rectangle from start to current mouse grid
+    
     if(shiftPlacementActive && shiftPlacementStart){
       const sx = shiftPlacementStart.gx, sy = shiftPlacementStart.gy;
       const ex = mouse.gridX, ey = mouse.gridY;
       const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex);
       const y0 = Math.min(sy, ey), y1 = Math.max(sy, ey);
 
-      // semi-transparent fill over the tiles
+      
       for(let gy = y0; gy <= y1; gy++){
         for(let gx = x0; gx <= x1; gx++){
           const s2 = isoToScreen(gx,gy);
@@ -734,7 +828,7 @@ function draw(){
           ctx.closePath(); ctx.fill();
           ctx.restore();
 
-          // also draw preview image small/transparent
+          
           drawImageOnTile(gx,gy,previewVar,0.35);
         }
       }
@@ -806,6 +900,7 @@ function loadFromSaveObject(obj){
     placed.push({ x: it.x, y: it.y, var: varClone, flip: it.flip, layer: it.layer, assetId: asset.id });
   });
   camGoal.x = cam.x = obj.cam.x||0; camGoal.y = cam.y = obj.cam.y||0; camGoal.zoom = cam.zoom = obj.cam.zoom||1;
+  saveToLocalStorageDebounced();
 }
 
 function tryAutoLoadFromLocalStorage(){
@@ -845,6 +940,30 @@ function showSaveCopiedPopup(){
   
   el.addEventListener('animationend', function onAnim(e){ if(e.animationName==='stardustPopupOut'){ el.style.display='none'; el.removeEventListener('animationend', onAnim); } });
   el.style.display='block';
+}
+
+
+let _autosaveTimer = null;
+function saveToLocalStorageDebounced(delay = 500){
+  if(_autosaveTimer) clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(()=>{
+    try{
+      const str = getCompactSaveString();
+      localStorage.setItem('stardust_save_v1', str);
+      showAutosavedIndicator();
+    }catch(e){}
+  }, delay);
+}
+
+let _autosavedIndicatorTimer = null;
+function showAutosavedIndicator(duration = 1200){
+  const el = document.getElementById('autosaveIndicator');
+  if(!el) return;
+  el.classList.add('show'); el.setAttribute('aria-hidden','false');
+  if(_autosavedIndicatorTimer) clearTimeout(_autosavedIndicatorTimer);
+  _autosavedIndicatorTimer = setTimeout(()=>{
+    el.classList.remove('show'); el.setAttribute('aria-hidden','true');
+  }, duration);
 }
 
 function showLoadModal(){
@@ -894,7 +1013,7 @@ tryAutoLoadFromLocalStorage();
 
 loop();
 
-// --- Reset modal logic ---
+
 (function(){
   const resetBtn = document.getElementById('resetBtn');
   const modal = document.getElementById('reset-modal');
@@ -923,9 +1042,10 @@ loop();
   btnCancel.addEventListener('click', (e)=>{ closeModal(); });
   overlay.addEventListener('click', (e)=>{ closeModal(); });
   btnConfirm.addEventListener('click', (e)=>{
-    // perform reset: clear placed items, update UI and localStorage
+    
     placed.length = 0;
     try{ localStorage.removeItem('stardust_save_v1'); }catch(e){}
+    if(_autosaveTimer){ clearTimeout(_autosaveTimer); _autosaveTimer = null; }
     highlightSelectedInUI();
     closeModal();
   });
