@@ -81,7 +81,6 @@ const ASSETS = [
     id: 'solarPanel',
     name: 'Solar Panel',
     energyGeneration: 50,
-    
     cost: 120,
     weight: 25, 
     variations: [
@@ -139,7 +138,7 @@ const ASSETS = [
     id: 'weight',
     name: 'Weight',
     cost: 20,
-    weight: 50, 
+    weight: 20, 
     variations: [
       { id: 'weight_default', name: 'Default', img: 'items/weight.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
     ]
@@ -195,6 +194,7 @@ const ASSETS = [
     name: 'Flowers',
     cost: 2,
     weight: 1,
+    energyGeneration: 2,
     variations: [
       { id: 'flowers_default', name: 'Default', img: 'items/flowers.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
     ]
@@ -222,6 +222,7 @@ const ASSETS = [
     name: 'Incinerator',
     cost: 50,
     weight: 80,
+    energyConsumption: 2,
     variations: [
       { id: 'incinerator_default', name: 'Default', img: 'items/incinerator.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
     ]
@@ -231,6 +232,7 @@ const ASSETS = [
     name: 'Filtration',
     cost: 80,
     weight: 40,
+    energyConsumption: 2,
     variations: [
       { id: 'filtration_default', name: 'Default', img: 'items/filtration.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
     ]
@@ -265,7 +267,8 @@ const ASSETS = [
   }
 ];
 
-let money = 100000;
+const STARTING_MONEY = 7500;
+let money = STARTING_MONEY;
 const placed = [];
 let selectedItem = ASSETS[0];
 let selectedVariation = selectedItem.variations[0];
@@ -596,6 +599,19 @@ function getAssetById(id){
   return ASSETS.find(a=>a.id===id) || null;
 }
 
+function computePlacedCost(items){
+  const arr = items || placed;
+  return arr.reduce((s,p)=>{
+    const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]);
+    const asset = getAssetById(aid);
+    return s + (asset && asset.cost ? asset.cost : 0);
+  }, 0);
+}
+
+function isWallAsset(id){
+  return ['wallLeft','wallRight','wallCornerTop','wallCornerBottom'].includes(id);
+}
+
 
 function deleteItemsAt(gx,gy,layer){
   let refund = 0;
@@ -786,7 +802,31 @@ function drawImageOnTile(gx, gy, varData, alpha = 1) {
     ctx.scale(-1, 1);
     ctx.drawImage(img, -w / 2, drawY, w, h);
   } else {
-    ctx.drawImage(img, drawX, drawY, w, h);
+    const aid = varData.assetId || (varData.id && varData.id.split && varData.id.split('_')[0]);
+    const isWall = isWallAsset(aid || '');
+
+    if(isWall){
+      try{
+        const off = document.createElement('canvas');
+        off.width = Math.max(1, Math.round(w));
+        off.height = Math.max(1, Math.round(h));
+        const octx = off.getContext('2d');
+        octx.drawImage(img, 0, 0, img.width, img.height, 0, 0, off.width, off.height);
+        const idata = octx.getImageData(0,0,off.width,off.height);
+        const data = idata.data;
+        for(let i=0;i<data.length;i+=4){
+          const r = data[i], g = data[i+1], b = data[i+2];
+          const gray = Math.round(0.299*r + 0.587*g + 0.114*b);
+          data[i]=gray; data[i+1]=gray; data[i+2]=gray;
+        }
+        octx.putImageData(idata,0,0);
+        ctx.drawImage(off, drawX, drawY, w, h);
+      }catch(e){
+        ctx.drawImage(img, drawX, drawY, w, h);
+      }
+    } else {
+      ctx.drawImage(img, drawX, drawY, w, h);
+    }
   }
   ctx.restore();
 }
@@ -979,6 +1019,12 @@ function loadFromSaveObject(obj){
     placed.push({ x: it.x, y: it.y, var: varClone, flip: it.flip, layer: it.layer, assetId: asset.id });
   });
   camGoal.x = cam.x = obj.cam.x||0; camGoal.y = cam.y = obj.cam.y||0; camGoal.zoom = cam.zoom = obj.cam.zoom||1;
+  // After loading items, set money to starting money minus cost of loaded items
+  try{
+    const loadedCost = computePlacedCost(placed);
+    money = Math.max(0, STARTING_MONEY - loadedCost);
+  }catch(e){ money = STARTING_MONEY; }
+  highlightSelectedInUI();
   saveToLocalStorageDebounced();
 }
 
@@ -1126,7 +1172,14 @@ function handleBuildRoom(x0,y0,x1,y1){
   cells.forEach(c=>{
     const asset = floorAsset;
     const variation = asset.variations && asset.variations[0];
-    placed.push({ x: c.gx, y: c.gy, var: Object.assign({}, variation), flip: 'left', layer: baseLayer, assetId: asset.id });
+    const floorIds = ['carpet','ceramicTile','woodenPlank','woodenTile','metalTile','tile'];
+    const shouldOffsetFloor = asset && floorIds.includes(asset.id);
+    if (shouldOffsetFloor && (c.gx === x1 || c.gy === y1)) {
+      return;
+    }
+    const placeX = c.gx + (shouldOffsetFloor ? 1 : 0);
+    const placeY = c.gy + (shouldOffsetFloor ? 1 : 0);
+    placed.push({ x: placeX, y: placeY, var: Object.assign({}, variation), flip: 'left', layer: baseLayer, assetId: asset.id });
   });
 
   
@@ -1136,8 +1189,7 @@ function handleBuildRoom(x0,y0,x1,y1){
     for(let gx=x0; gx<=x1; gx++){
       
       placeWallAt(gx, y0, gx===x0 ? wallCornerTop : wallLeft, layerNum, h);
-      // use bottom corner asset for the very bottom corners of the room
-      placeWallAt(gx, y1, (gx === x0 || gx === x1) ? wallCornerBottom : wallLeft, layerNum, h);
+      placeWallAt(gx, y1, (gx === x0) ? wallRight : ( (gx === x1) ? wallCornerBottom : wallLeft ), layerNum, h);
     }
     
     for(let gy=y0+1; gy<=y1-1; gy++){
@@ -1154,6 +1206,8 @@ function placeWallAt(gx, gy, asset, layerNum, heightIndex){
   const variation = asset.variations && asset.variations[0];
   
   const varClone = Object.assign({}, variation);
+  // mark which asset this variation came from so rendering helpers can detect walls
+  varClone.assetId = asset.id;
   
   varClone.offsetY = (varClone.offsetY || 0) - (heightIndex * 6);
   varClone.offsetX = (varClone.offsetX || 0) + (heightIndex * 3);
@@ -1183,6 +1237,168 @@ function showAutosavedIndicator(duration = 1200){
     el.classList.remove('show'); el.setAttribute('aria-hidden','true');
   }, duration);
 }
+
+const REQUIREMENTS = [
+  { id: 'weightLimit', label: 'Weight ≤ 18500 kg' },
+  { id: 'energy', label: 'Net energy ≥ 100' },
+  { id: 'rooms', label: 'At least 2 rooms' },
+  { id: 'blockLimit', label: 'Blocks placed ≤ 2500' },
+  { id: 'weights', label: 'At least 3 weights' },
+  { id: 'farms', label: 'At least 5 farms' },
+  { id: 'computerRadar', label: 'Computer and Radar' },
+  { id: 'toilets', label: 'At least 3 toilets' },
+  { id: 'filtrations', label: 'At least 5 filtrations' },
+  { id: 'canisters', label: 'At least 20 canisters' },
+  { id: 'stove', label: 'At least 1 stove' },
+  { id: 'mattresses', label: 'At least 5 mattresses' }
+];
+
+const FLOOR_IDS = ['carpet','ceramicTile','woodenPlank','woodenTile','metalTile','tile'];
+const WALL_PREFIXES = ['wallLeft','wallRight','wallCornerTop','wallCornerBottom'];
+
+function createRequirementsPanel(){
+  if(document.getElementById('requirements-panel')) return;
+
+  const style = document.createElement('style');
+  style.textContent = `
+    #requirements-panel{position:fixed;right:14px;bottom:14px;width:320px;max-height:40vh;background:rgba(10,10,10,0.8);color:#fff;border-radius:8px;padding:8px;box-shadow:4px 4px 0px rgba(0,0,0,0.2);font-family:Arial, Helvetica, sans-serif;font-size:13px;overflow:hidden;z-index:9999}
+    #requirements-panel .title{font-weight:700;margin:6px 8px 8px 8px}
+    #requirements-panel .list{max-height:32vh;overflow:auto;padding:6px 4px}
+    #requirements-panel .req-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px}
+    #requirements-panel .req-item.unmet{background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005));}
+    #requirements-panel .icon{width:18px;height:18px;flex:0 0 18px}
+    #requirements-panel .label{flex:1}
+    #requirements-panel .count{color:#bfc7d0;font-size:12px;margin-left:8px}
+  `;
+  document.head.appendChild(style);
+
+  const panel = document.createElement('div'); panel.id='requirements-panel';
+  const title = document.createElement('div'); title.className='title'; title.textContent='Requirements';
+  const list = document.createElement('div'); list.className='list'; list.id='requirements-list';
+
+  panel.appendChild(title); panel.appendChild(list);
+  document.body.appendChild(panel);
+
+  updateRequirementsPanel();
+}
+
+function svgCheck(){
+  return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none"><circle cx="12" cy="12" r="11" fill="#16a34a" /><path d="M7.5 12.5l2.5 2.5L16.5 9" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function svgX(){
+  return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none"><circle cx="12" cy="12" r="11" fill="#dc2626" /><path d="M15 9l-6 6M9 9l6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function getPlacedCountById(id){
+  return placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); return s + (aid===id?1:0); }, 0);
+}
+
+function detectRooms(){
+  const wallLikeIds = WALL_PREFIXES.concat(['hallway']);
+
+  const wallPositions = new Set();
+  placed.forEach(p => {
+    const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]);
+    if (wallLikeIds.includes(aid)) wallPositions.add(p.x + ',' + p.y);
+  });
+
+  const hasWallAt = (x, y) => wallPositions.has(x + ',' + y);
+
+  const coords = Array.from(wallPositions).map(s => s.split(',').map(Number));
+  const seenRects = new Set();
+  let roomCount = 0;
+
+  for (let i = 0; i < coords.length; i++) {
+    const [x1, y1] = coords[i];
+    for (let j = 0; j < coords.length; j++) {
+      const [x2, y2] = coords[j];
+      if (x2 <= x1 || y2 <= y1) continue;
+
+      const key = x1 + ',' + y1 + '|' + x2 + ',' + y2;
+      if (seenRects.has(key)) continue;
+
+      let ok = true;
+      for (let x = x1; x <= x2; x++) {
+        if (!hasWallAt(x, y1)) { ok = false; break; }
+        if (!hasWallAt(x, y2)) { ok = false; break; }
+      }
+      if (!ok) continue;
+      for (let y = y1; y <= y2; y++) {
+        if (!hasWallAt(x1, y)) { ok = false; break; }
+        if (!hasWallAt(x2, y)) { ok = false; break; }
+      }
+      if (!ok) continue;
+
+      seenRects.add(key);
+      roomCount++;
+    }
+  }
+
+  return roomCount;
+}
+
+function computeRequirementsStatus(){
+  const status = {};
+
+  const totalWeight = placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); const asset = getAssetById(aid); return s + (asset && asset.weight? asset.weight : 0); }, 0);
+  // Use the intended project weight limit (18500 kg) instead of the incorrect 550 value
+  status.weightLimit = totalWeight <= 18500;
+  status._totalWeight = totalWeight;
+
+  const totalGen = placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); const asset = getAssetById(aid); return s + (asset && asset.energyGeneration? asset.energyGeneration : 0); }, 0);
+  const totalCons = placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); const asset = getAssetById(aid); return s + (asset && asset.energyConsumption? asset.energyConsumption : 0); }, 0);
+  status.energy = (totalGen - totalCons) >= 100;
+  status._energyNet = totalGen - totalCons;
+
+  status.rooms = detectRooms() >= 2;
+  status._rooms = detectRooms();
+
+  status.blockLimit = placed.length <= 2500;
+  status._blocks = placed.length;
+
+  status.weights = getPlacedCountById('weight') >= 3;
+  status.farms = getPlacedCountById('farm') >= 5;
+  status.computerRadar = (getPlacedCountById('computer') >=1) && (getPlacedCountById('satellite') >=1);
+  status.toilets = getPlacedCountById('toilet') >= 3;
+  status.filtrations = getPlacedCountById('filtration') >= 5;
+  status.canisters = getPlacedCountById('canisters') >= 20;
+  status.stove = getPlacedCountById('stove') >= 1;
+  status.mattresses = getPlacedCountById('mattress') >= 5;
+
+  return status;
+}
+
+function updateRequirementsPanel(){
+  createRequirementsPanel();
+  const list = document.getElementById('requirements-list'); if(!list) return;
+  const st = computeRequirementsStatus();
+
+  const items = REQUIREMENTS.map(r=>{
+    const fulfilled = !!st[r.id];
+    const extra = {};
+    if(r.id === 'weightLimit') extra.count = (st._totalWeight||0).toFixed(0)+' kg';
+    if(r.id === 'energy') extra.count = 'Net: '+(st._energyNet||0);
+    if(r.id === 'rooms') extra.count = (st._rooms||0)+' rooms';
+    if(r.id === 'blockLimit') extra.count = (st._blocks||0)+' blocks';
+    return Object.assign({}, r, { fulfilled, extra });
+  });
+
+  items.sort((a,b)=>{ if(a.fulfilled===b.fulfilled) return a.label.localeCompare(b.label); return a.fulfilled?1:-1; });
+
+  list.innerHTML = '';
+  items.forEach(it=>{
+    const div = document.createElement('div'); div.className = 'req-item '+(it.fulfilled? 'met':'unmet');
+    const iconWrap = document.createElement('div'); iconWrap.className='icon'; iconWrap.innerHTML = it.fulfilled? svgCheck(): svgX();
+    const label = document.createElement('div'); label.className='label'; label.textContent = it.label;
+    const count = document.createElement('div'); count.className='count'; count.textContent = (it.extra && it.extra.count) ? it.extra.count : '';
+    div.appendChild(iconWrap); div.appendChild(label); div.appendChild(count);
+    list.appendChild(div);
+  });
+}
+
+const _requirementsTimer = setInterval(updateRequirementsPanel, 1000);
+
 
 function showLoadModal(){
   let m = document.getElementById('stardust-load-modal');
@@ -1264,6 +1480,8 @@ loop();
     placed.length = 0;
     try{ localStorage.removeItem('stardust_save_v1'); }catch(e){}
     if(_autosaveTimer){ clearTimeout(_autosaveTimer); _autosaveTimer = null; }
+
+    money = STARTING_MONEY;
     highlightSelectedInUI();
     closeModal();
   });
