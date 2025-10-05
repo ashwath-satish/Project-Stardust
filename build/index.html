@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/x-icon" href="/favicon.png">
+  <title>Project Stardust Builder</title>
+</head>
+<body>
+  <div id="ui">
+    <button id="togglePanel">☰ Placeables</button>
+    <div id="panel" class="open">
+      <div class="panel-header">
+        <h3>Placeables</h3>
+        <div class="money">Budget Left: <span id="money">100</span></div>
+      </div>
+      <div id="itemsList"></div>
+      <div class="layerControl">
+        <label for="layerSlider">Layer: <span id="layerDisplay">1</span></label>
+        <input id="layerSlider" type="range" min="1" max="5" value="1" />
+      </div>
+      <div class="controls">
+        <div class="zoomLabel">Zoom:</div>
+        <button id="zoomIn">+</button>
+        <button id="zoomOut">−</button>
+      </div>
+      <ul class="hint">
+        <li>Right-click drag = pan</li>
+        <li>Arrows = move</li>
+        <li>Left-click = place</li>
+        <li>Press E = face left (default)</li>
+        <li>Press Q = face right</li>
+        <li>Press P / O = layer up / down (1-5)</li>
+      </ul>
+    </div>
+  </div>
+  <div id="topRight">
+    <button id="resetBtn" class="topRightBtn">
+      <img src="restart.svg" alt="restart" class="btnIcon" />
+      <span>Reset</span>
+    </button>
+    <button id="houseBtn" class="topRightBtn">
+      <img src="house.svg" alt="house" class="btnIcon" />
+      <span>House</span>
+    </button>
+  </div>
+  <!-- Reset confirmation modal (added) -->
+  <div id="reset-modal" class="reset-modal" aria-hidden="true">
+    <div class="overlay"></div>
+    <div class="box">
+      <div class="row message-row">
+        <div class="msg">Are you sure you want to reset your base?</div>
+      </div>
+      <div class="row actions-row">
+        <button id="resetCancel" class="btnCancel">No</button>
+        <button id="resetConfirm" class="btnConfirm">Yes</button>
+      </div>
+    </div>
+  </div>
+  <canvas id="isoCanvas"></canvas>
+  <script src="script.js"></script>
+</body>
+</html>
