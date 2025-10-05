@@ -69,6 +69,15 @@ const ASSETS = [
     ]
   },
   {
+    id: 'hallway',
+    name: 'Hallway',
+    cost: 4,
+    weight: 15, 
+    variations: [
+      { id: 'hallway_default', name: 'Default', img: 'items/hallway.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
     id: 'solarPanel',
     name: 'Solar Panel',
     energyGeneration: 50,
@@ -308,6 +317,20 @@ function randForCoord(x,y,seed=0){
   return frac(v);
 }
 
+function restoreRoomSelection(){
+  if(roomBuilder && roomBuilder.cachedSelection){
+    try{
+      selectedItem = roomBuilder.cachedSelection.item || selectedItem;
+      selectedVariation = roomBuilder.cachedSelection.variation || selectedVariation;
+      selectedFlip = roomBuilder.cachedSelection.flip || selectedFlip;
+      currentLayer = roomBuilder.cachedSelection.layer || currentLayer;
+    }catch(e){}
+    roomBuilder.cachedSelection = null;
+  }
+  roomBuilder.active = false;
+  highlightSelectedInUI();
+}
+
 function generateMoonsInView(){
   
   const corners = [
@@ -399,6 +422,7 @@ let rightClickStart = null;
 
 let shiftPlacementStart = null; 
 let shiftPlacementActive = false;
+let roomBuilder = { active: false, height: 1, floorAssetId: 'carpet' };
 
 const itemsList=document.getElementById('itemsList');
 const moneyEl=document.getElementById('money');
@@ -549,10 +573,15 @@ window.addEventListener('mouseup',e=>{
       const y0 = Math.min(start.gy, end.gy);
       const y1 = Math.max(start.gy, end.gy);
 
-      
-      for(let gy = y0; gy <= y1; gy++){
-        for(let gx = x0; gx <= x1; gx++){
-          placeItemAt(gx,gy);
+      if(roomBuilder && roomBuilder.active){
+        handleBuildRoom(x0,y0,x1,y1);
+        
+        restoreRoomSelection();
+      } else {
+        for(let gy = y0; gy <= y1; gy++){
+          for(let gx = x0; gx <= x1; gx++){
+            placeItemAt(gx,gy);
+          }
         }
       }
 
@@ -591,6 +620,8 @@ function deleteItemsAt(gx,gy,layer){
   placed.length = 0;
   remaining.forEach(x=>placed.push(x));
   saveToLocalStorageDebounced();
+  
+  restoreRoomSelection();
 }
 
 window.addEventListener('keydown',e=>{
@@ -814,7 +845,14 @@ function draw(){
     ctx.lineTo(s.x-tileW/2*cam.zoom,s.y);
     ctx.closePath();ctx.stroke();
     
-    const previewVar = Object.assign({}, selectedVariation, { flip: selectedFlip });
+    let previewVar = Object.assign({}, selectedVariation, { flip: selectedFlip });
+    
+    if(roomBuilder && roomBuilder.active){
+      const floorAsset = getAssetById(roomBuilder.floorAssetId) || getAssetById('carpet');
+      if(floorAsset && floorAsset.variations && floorAsset.variations[0]){
+        previewVar = Object.assign({}, floorAsset.variations[0], { flip: selectedFlip });
+      }
+    }
     
   
   const occupied = placed.some(pp=>pp.x===mouse.gridX && pp.y===mouse.gridY && ((pp.layer||1)===currentLayer) && pp.assetId !== 'moon' && pp.assetId !== 'miniMoon');
@@ -999,10 +1037,128 @@ function performSave(){
 }
 
 
-document.addEventListener('DOMContentLoaded', ()=>{
+function setupUIBindings(){
   const sb = document.getElementById('saveBtn'); if(sb) sb.addEventListener('click', performSave);
   const lb = document.getElementById('loadBtn'); if(lb) lb.addEventListener('click', showLoadModal);
-});
+  
+  const makeBtn = document.getElementById('makeRoomBtn'); if(makeBtn) makeBtn.addEventListener('click', openRoomModal);
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', setupUIBindings);
+} else {
+  setupUIBindings();
+}
+
+function openRoomModal(){
+  let m = document.getElementById('stardust-room-modal');
+  if(!m){
+    m = document.createElement('div'); m.id='stardust-room-modal'; m.className='stardust-load-modal';
+    const overlay = document.createElement('div'); overlay.className='overlay';
+    const box = document.createElement('div'); box.className='box';
+  const row2 = document.createElement('div'); row2.className='row';
+    const labelF = document.createElement('label'); labelF.textContent='Floor type: ';
+    const selectF = document.createElement('select'); selectF.id='roomFloorSelect';
+    
+    const floorOptions = ASSETS.filter(a=>['carpet','ceramicTile','woodenPlank','woodenTile','metalTile','tile'].includes(a.id));
+    floorOptions.forEach(o=>{ const opt=document.createElement('option'); opt.value=o.id; opt.textContent=o.name; selectF.appendChild(opt); });
+    row2.appendChild(labelF); row2.appendChild(selectF);
+
+    const actions = document.createElement('div'); actions.className='row';
+    const cancel = document.createElement('button'); cancel.textContent='Cancel';
+    const ok = document.createElement('button'); ok.textContent='Start'; ok.className='btnPrimary';
+    actions.appendChild(cancel); actions.appendChild(ok);
+
+  box.appendChild(row2); box.appendChild(actions);
+    m.appendChild(overlay); m.appendChild(box); document.body.appendChild(m);
+
+    overlay.onclick = closeRoomModal;
+    cancel.onclick = closeRoomModal;
+    ok.onclick = ()=>{
+      
+      const floor = document.getElementById('roomFloorSelect').value || 'carpet';
+      roomBuilder.height = 1;
+      roomBuilder.floorAssetId = floor;
+      
+      roomBuilder.cachedSelection = { item: selectedItem, variation: selectedVariation, flip: selectedFlip, layer: currentLayer };
+      roomBuilder.active = true;
+      closeRoomModal();
+    };
+  }
+  m.classList.remove('closing'); m.classList.add('open');
+  setTimeout(()=>{ const el=document.getElementById('roomFloorSelect'); if(el) el.focus(); },80);
+}
+
+function closeRoomModal(){ const m=document.getElementById('stardust-room-modal'); if(!m) return; m.classList.add('closing'); m.classList.remove('open'); const onAnim=(e)=>{ if(e.animationName==='stardustFadeOut' || e.animationName==='stardustSlideUp'){ m.style.display='none'; m.classList.remove('closing'); m.removeEventListener('animationend', onAnim); } }; m.addEventListener('animationend', onAnim); }
+
+function handleBuildRoom(x0,y0,x1,y1){
+  
+  const floorAsset = getAssetById(roomBuilder.floorAssetId) || getAssetById('carpet');
+  const wallLeft = getAssetById('wallLeft');
+  const wallRight = getAssetById('wallRight');
+  const wallCornerTop = getAssetById('wallCornerTop');
+  const wallCornerBottom = getAssetById('wallCornerBottom');
+
+  
+  const cells = [];
+  for(let gy=y0; gy<=y1; gy++){
+    for(let gx=x0; gx<=x1; gx++){
+      cells.push({gx,gy});
+    }
+  }
+
+  
+  const floorCost = (floorAsset && floorAsset.cost) ? floorAsset.cost : 0;
+  let totalCost = floorCost * cells.length;
+
+  
+  const perimeter = ((x1-x0+1)*2 + (y1-y0+1)*2 - 4);
+  const wallCost = (wallLeft && wallLeft.cost) ? wallLeft.cost : 0;
+  totalCost += wallCost * perimeter * roomBuilder.height;
+
+  if(money < totalCost){ alert('Not enough money to build room (cost: '+totalCost+')'); return; }
+
+  
+  money -= totalCost; highlightSelectedInUI();
+
+  
+  const baseLayer = currentLayer;
+  cells.forEach(c=>{
+    const asset = floorAsset;
+    const variation = asset.variations && asset.variations[0];
+    placed.push({ x: c.gx, y: c.gy, var: Object.assign({}, variation), flip: 'left', layer: baseLayer, assetId: asset.id });
+  });
+
+  
+  for(let h=0; h<roomBuilder.height; h++){
+    const layerNum = baseLayer + h; 
+    
+    for(let gx=x0; gx<=x1; gx++){
+      
+      placeWallAt(gx, y0, gx===x0 ? wallCornerTop : wallLeft, layerNum, h);
+      // use bottom corner asset for the very bottom corners of the room
+      placeWallAt(gx, y1, (gx === x0 || gx === x1) ? wallCornerBottom : wallLeft, layerNum, h);
+    }
+    
+    for(let gy=y0+1; gy<=y1-1; gy++){
+      placeWallAt(x0, gy, wallRight, layerNum, h);
+      placeWallAt(x1, gy, wallRight, layerNum, h);
+    }
+  }
+
+  saveToLocalStorageDebounced();
+}
+
+function placeWallAt(gx, gy, asset, layerNum, heightIndex){
+  if(!asset) return;
+  const variation = asset.variations && asset.variations[0];
+  
+  const varClone = Object.assign({}, variation);
+  
+  varClone.offsetY = (varClone.offsetY || 0) - (heightIndex * 6);
+  varClone.offsetX = (varClone.offsetX || 0) + (heightIndex * 3);
+  placed.push({ x: gx, y: gy, var: varClone, flip: 'left', layer: layerNum, assetId: asset.id });
+}
 
 
 let _autosaveTimer = null;
