@@ -164,6 +164,15 @@ const ASSETS = [
     ]
   },
   {
+    id: 'tile',
+    name: 'Marble Tile',
+    cost: 1,
+    weight: 50,
+    variations: [
+      { id: 'tile_default', name: 'Default', img: 'items/marbleTile.png', offsetX: 0, offsetY: -30, scaleFactor: 1 }
+    ]
+  },
+  {
     id: 'metalBlock',
     name: 'Metal Block',
     cost: 15,
@@ -640,7 +649,7 @@ function placeItemAt(gx,gy){
   
   
   
-  const isCarpetAsset = (id)=> ['carpet','ceramicTile','woodenPlank','woodenTile','metalTile'].includes(id);
+  const isCarpetAsset = (id)=> ['carpet','ceramicTile','woodenPlank','woodenTile','metalTile', 'tile'].includes(id);
   const selectedIsCarpet = isCarpetAsset(selectedItem.id);
 
   
