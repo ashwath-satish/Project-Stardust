@@ -635,7 +635,7 @@ function placeItemAt(gx,gy){
   
   
   
-  const isCarpetAsset = (id)=> ['carpet','ceramicTile','woodenPlank','woodenTile'].includes(id);
+  const isCarpetAsset = (id)=> ['carpet','ceramicTile','woodenPlank','woodenTile','metalTile'].includes(id);
   const selectedIsCarpet = isCarpetAsset(selectedItem.id);
 
   
