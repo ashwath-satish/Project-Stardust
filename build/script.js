@@ -263,6 +263,10 @@ ASSETS.forEach(item => {
   });
 });
 
+const PLACE_SOUND = new Audio('place.mp3');
+PLACE_SOUND.preload = 'auto';
+PLACE_SOUND.volume = 0.5;
+
 
 const MOON_PATHS = [
   'items/moon/1.png',
@@ -373,6 +377,13 @@ resizeCanvas();
 let tileW = 120, tileH = 60;
 let cam = { x:0,y:0,zoom:1 };
 let camGoal = { x:0,y:0,zoom:1 };
+let camTween = null;
+
+function startCameraTween(tx, ty, tz, duration){
+  try{
+    camTween = { sx: cam.x, sy: cam.y, sz: cam.zoom, tx: tx, ty: ty, tz: tz, start: performance.now(), dur: duration };
+  }catch(e){ camTween = null; }
+}
 let isPanning=false, panStart={};
 let mouse={x:0,y:0,gridX:0,gridY:0,overCanvas:false};
 let rightClickStart = null; 
@@ -575,10 +586,10 @@ function deleteItemsAt(gx,gy,layer){
 
 window.addEventListener('keydown',e=>{
   const step=60/cam.zoom;
-  if(e.key==='ArrowLeft'){camGoal.x-=step;}
-  if(e.key==='ArrowRight'){camGoal.x+=step;}
-  if(e.key==='ArrowUp'){camGoal.y-=step;}
-  if(e.key==='ArrowDown'){camGoal.y+=step;}
+  if(e.key==='ArrowLeft'){ if(camTween) camTween = null; camGoal.x-=step;}
+  if(e.key==='ArrowRight'){ if(camTween) camTween = null; camGoal.x+=step;}
+  if(e.key==='ArrowUp'){ if(camTween) camTween = null; camGoal.y-=step;}
+  if(e.key==='ArrowDown'){ if(camTween) camTween = null; camGoal.y+=step;}
   if(e.key==='+'||e.key==='='){camGoal.zoom=Math.min(3,camGoal.zoom*1.15);}
   if(e.key==='-'){camGoal.zoom=Math.max(0.4,camGoal.zoom/1.15);}
   
@@ -601,21 +612,15 @@ window.addEventListener('keydown',e=>{
   }
   
   if(e.key==='s' || e.key==='S'){
-    const str = getCompactSaveString();
-    try{
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(str);
-      } else {
-        const ta = document.createElement('textarea'); ta.value = str; document.body.appendChild(ta);
-        ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-      }
-    }catch(err){}
-    try{ localStorage.setItem('stardust_save_v1', str); }catch(e){}
-    showSaveCopiedPopup();
+    performSave();
   }
   
   if(e.key==='l' || e.key==='L'){
     showLoadModal();
+  }
+  
+  if(e.key==='r' || e.key==='R'){
+    startCameraTween(0,0,cam.zoom,500);
   }
 });
 
@@ -659,6 +664,20 @@ function placeItemAt(gx,gy){
   placed.push({x:gx,y:gy,var:selectedVariation,flip:selectedFlip,layer:currentLayer,assetId:selectedItem.id});
   money-=selectedItem.cost;highlightSelectedInUI();
   saveToLocalStorageDebounced();
+
+  
+  try{
+    if(PLACE_SOUND){
+      try{
+        
+        PLACE_SOUND.currentTime = 0;
+        PLACE_SOUND.play();
+      }catch(e){
+        
+        const s = PLACE_SOUND.cloneNode(); s.play().catch(()=>{});
+      }
+    }
+  }catch(e){}
 }
 
 function drawGrid(cx,cy,range=12){
@@ -836,10 +855,23 @@ function draw(){
   }
 }
 function loop(){
-  cam.x+=(camGoal.x-cam.x)/5;
-  cam.y+=(camGoal.y-cam.y)/5;
-  cam.zoom+=(camGoal.zoom-cam.zoom)/5;
-  draw();requestAnimationFrame(loop);
+  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  if(camTween){
+    const tRaw = Math.min(1, (now - camTween.start) / camTween.dur);
+    const t = tRaw;
+    
+    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    cam.x = camTween.sx + (camTween.tx - camTween.sx) * ease;
+    cam.y = camTween.sy + (camTween.ty - camTween.sy) * ease;
+    cam.zoom = camTween.sz + (camTween.tz - camTween.sz) * ease;
+    camGoal.x = cam.x; camGoal.y = cam.y; camGoal.zoom = cam.zoom;
+    if(tRaw >= 1){ camTween = null; }
+  } else {
+    cam.x += (camGoal.x - cam.x) / 5;
+    cam.y += (camGoal.y - cam.y) / 5;
+    cam.zoom += (camGoal.zoom - cam.zoom) / 5;
+  }
+  draw(); requestAnimationFrame(loop);
 }
 function resizeCanvas(){
   canvas.width=window.innerWidth;canvas.height=window.innerHeight;
@@ -914,33 +946,54 @@ function tryAutoLoadFromLocalStorage(){
 }
 
 
-let _savePopupTimer=null;
-function showSaveCopiedPopup(){
-  let el = document.getElementById('stardust-save-popup');
-  if(!el){
-    el = document.createElement('div'); el.id='stardust-save-popup'; el.className='stardust-save-popup';
-    const msg = document.createElement('div'); msg.className='message'; msg.textContent='Save file copied to clipboard!';
-    const progressWrap = document.createElement('div'); progressWrap.className='progress';
-    const bar = document.createElement('i'); progressWrap.appendChild(bar);
-    el.appendChild(msg); el.appendChild(progressWrap);
-    document.body.appendChild(el);
+function showSaveModal(){
+  let m = document.getElementById('stardust-save-modal');
+  if(!m){
+    m = document.createElement('div'); m.id='stardust-save-modal'; m.className='reset-modal';
+    const overlay = document.createElement('div'); overlay.className='overlay';
+    const box = document.createElement('div'); box.className='box';
+    const row = document.createElement('div'); row.className='row message-row';
+    const msg = document.createElement('div'); msg.className='msg'; msg.textContent = 'Save copied to clipboard and stored locally.';
+    row.appendChild(msg);
+    const actions = document.createElement('div'); actions.className='row actions-row';
+    const ok = document.createElement('button'); ok.className='btnConfirm'; ok.textContent='OK';
+    actions.appendChild(ok);
+    box.appendChild(row); box.appendChild(actions);
+    m.appendChild(overlay); m.appendChild(box); document.body.appendChild(m);
+
+    overlay.addEventListener('click', closeSaveModal);
+    ok.addEventListener('click', closeSaveModal);
   }
-  
-  el.classList.remove('hide');
-  void el.offsetWidth; 
-  el.classList.add('show');
-  
-  const DURATION = 1700;
-  const barEl = el.querySelector('.progress > i');
-  if(barEl){ barEl.style.animationDuration = DURATION + 'ms'; }
-  if(_savePopupTimer) clearTimeout(_savePopupTimer);
-  _savePopupTimer = setTimeout(()=>{
-    el.classList.remove('show'); el.classList.add('hide');
-  }, DURATION);
-  
-  el.addEventListener('animationend', function onAnim(e){ if(e.animationName==='stardustPopupOut'){ el.style.display='none'; el.removeEventListener('animationend', onAnim); } });
-  el.style.display='block';
+  m.classList.remove('closing'); m.classList.add('open'); m.style.display='flex'; m.setAttribute('aria-hidden','false');
+  setTimeout(()=>{ const ok = m.querySelector('.btnConfirm'); if(ok) ok.focus(); }, 120);
 }
+
+function closeSaveModal(){
+  const m = document.getElementById('stardust-save-modal'); if(!m) return;
+  m.classList.add('closing'); m.classList.remove('open'); m.setAttribute('aria-hidden','true');
+  const onAnim = (e)=>{ if(e.animationName==='resetFadeOut' || e.animationName==='resetScaleOut'){ m.style.display='none'; m.classList.remove('closing'); m.removeEventListener('animationend', onAnim); } };
+  m.addEventListener('animationend', onAnim);
+}
+
+function performSave(){
+  const str = getCompactSaveString();
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(str);
+    } else {
+      const ta = document.createElement('textarea'); ta.value = str; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    }
+  }catch(err){}
+  try{ localStorage.setItem('stardust_save_v1', str); }catch(e){}
+  showSaveModal();
+}
+
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const sb = document.getElementById('saveBtn'); if(sb) sb.addEventListener('click', performSave);
+  const lb = document.getElementById('loadBtn'); if(lb) lb.addEventListener('click', showLoadModal);
+});
 
 
 let _autosaveTimer = null;

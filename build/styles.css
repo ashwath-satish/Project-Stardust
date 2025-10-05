@@ -40,7 +40,7 @@ html,body{
   box-shadow:4px 4px 0px rgba(0,0,0,0.2);
 }
 
-/* Top-right action buttons (Reset / House) */
+
 #topRight{
   position:fixed;
   right:12px;
@@ -173,31 +173,6 @@ html,body{
 .layerControl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);box-shadow:0 1px 2px rgba(0,0,0,0.4)}
 .hint{font-size:12px;color:var(--muted);margin-top:8px;list-style:disc;padding-left:18px}
 .hint li{margin-bottom:6px}
-
-.stardust-save-popup{
-  position:fixed;
-  right:20px;
-  top:20px;
-  padding:10px 14px;
-  background:rgba(0,0,0,0.9);
-  color:#fff;
-  border-radius:8px;
-  z-index:99999;
-  font-family:Inter, system-ui, Arial, sans-serif;
-  box-shadow:0 6px 18px rgba(0,0,0,0.45);
-  opacity:0;
-  transform:translateY(-8px) scale(0.995);
-  pointer-events:none;
-}
-.stardust-save-popup.show{
-  animation:stardustPopupIn 220ms cubic-bezier(.2,.9,.2,1) forwards;
-}
-.stardust-save-popup.hide{
-  animation:stardustPopupOut 260ms ease forwards;
-}
-.stardust-save-popup .message{font-size:13px}
-.stardust-save-popup .progress{height:4px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;margin-top:8px}
-.stardust-save-popup .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#7dd3fc);width:100%;animation-name:stardustProgress;animation-timing-function:linear;animation-fill-mode:forwards}
 
 @keyframes stardustPopupIn{from{opacity:0;transform:translateY(-8px) scale(.995)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes stardustPopupOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-6px) scale(.995)}}
