@@ -1086,7 +1086,7 @@ function performSave(){
 function setupUIBindings(){
   const sb = document.getElementById('saveBtn'); if(sb) sb.addEventListener('click', performSave);
   const lb = document.getElementById('loadBtn'); if(lb) lb.addEventListener('click', showLoadModal);
-  
+  const cb = document.getElementById('communityBtn'); if(cb) cb.addEventListener('click', showCommunityModal);
   const makeBtn = document.getElementById('makeRoomBtn'); if(makeBtn) makeBtn.addEventListener('click', openRoomModal);
 }
 
@@ -1206,7 +1206,6 @@ function placeWallAt(gx, gy, asset, layerNum, heightIndex){
   const variation = asset.variations && asset.variations[0];
   
   const varClone = Object.assign({}, variation);
-  // mark which asset this variation came from so rendering helpers can detect walls
   varClone.assetId = asset.id;
   
   varClone.offsetY = (varClone.offsetY || 0) - (heightIndex * 6);
@@ -1342,7 +1341,6 @@ function computeRequirementsStatus(){
   const status = {};
 
   const totalWeight = placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); const asset = getAssetById(aid); return s + (asset && asset.weight? asset.weight : 0); }, 0);
-  // Use the intended project weight limit (18500 kg) instead of the incorrect 550 value
   status.weightLimit = totalWeight <= 18500;
   status._totalWeight = totalWeight;
 
@@ -1440,6 +1438,131 @@ function closeLoadModal(){
   m.addEventListener('animationend', onAnim);
 }
 
+// Community saves: stored as array of { name, code }
+function _getCommunityList(){
+  try{ const s = localStorage.getItem('stardust_community_v1'); if(!s) return []; return JSON.parse(s) || []; }catch(e){ return []; }
+}
+function _setCommunityList(arr){
+  try{ localStorage.setItem('stardust_community_v1', JSON.stringify(arr)); }catch(e){}
+}
+
+function showCommunityModal(){
+  let m = document.getElementById('stardust-community-modal');
+  if(!m){
+    m = document.createElement('div'); m.id='stardust-community-modal'; m.className='stardust-load-modal';
+    const overlay = document.createElement('div'); overlay.className='overlay';
+    const box = document.createElement('div'); box.className='box';
+
+    const title = document.createElement('div'); title.style.fontWeight='700'; title.style.marginBottom='8px'; title.textContent='Community Saves';
+    const listWrap = document.createElement('div'); listWrap.id='community-list'; listWrap.style.maxHeight='240px'; listWrap.style.overflow='auto';
+
+    const addRow = document.createElement('div'); addRow.className='row'; addRow.style.marginTop='10px'; addRow.style.display='flex'; addRow.style.gap='8px';
+    const nameInput = document.createElement('input'); nameInput.id='community-add-name'; nameInput.placeholder='Name for this save'; nameInput.style.flex='1'; nameInput.style.padding='8px'; nameInput.style.borderRadius='6px'; nameInput.style.border='1px solid rgba(255,255,255,0.04)'; nameInput.style.background='#071017'; nameInput.style.color='#eee';
+    const addBtn = document.createElement('button'); addBtn.textContent='Add Current'; addBtn.className='btnPrimary';
+    addRow.appendChild(nameInput); addRow.appendChild(addBtn);
+
+    const actions = document.createElement('div'); actions.className='row'; actions.style.marginTop='10px';
+    const cancel = document.createElement('button'); cancel.textContent='Cancel';
+    const openBtn = document.createElement('button'); openBtn.textContent='Open'; openBtn.className='btnPrimary';
+    actions.appendChild(cancel); actions.appendChild(openBtn);
+
+    box.appendChild(title); box.appendChild(listWrap); box.appendChild(addRow); box.appendChild(actions);
+    m.appendChild(overlay); m.appendChild(box); document.body.appendChild(m);
+
+    overlay.onclick = closeCommunityModal;
+    cancel.onclick = closeCommunityModal;
+
+    addBtn.onclick = ()=>{
+      const name = (document.getElementById('community-add-name')||{value:''}).value.trim() || 'Unnamed';
+      const code = getCompactSaveString();
+      const list = _getCommunityList();
+      list.unshift({ name, code });
+      _setCommunityList(list);
+      renderCommunityList();
+    };
+
+    openBtn.onclick = ()=>{
+      const sel = document.querySelector('#community-list .community-row.selected');
+      if(!sel){ alert('Pick a community save to open or Cancel'); return; }
+      const code = sel.getAttribute('data-code');
+      const parsed = parseCompactSaveString(code);
+      if(parsed){ loadFromSaveObject(parsed); try{ localStorage.setItem('stardust_save_v1', code);}catch(e){} closeCommunityModal(); }
+      else { alert('Invalid save code'); }
+    };
+
+    function onRowClick(e){
+      const rows = document.querySelectorAll('#community-list .community-row'); rows.forEach(r=>r.classList.remove('selected'));
+      const row = e.currentTarget; row.classList.add('selected');
+    }
+
+    function renderCommunityList(){
+      const wrap = document.getElementById('community-list'); if(!wrap) return;
+      wrap.innerHTML='';
+      const list = _getCommunityList();
+      if(list.length===0){ const em = document.createElement('div'); em.style.color='var(--muted)'; em.textContent='No community saves yet. Add the current save or paste a code.'; wrap.appendChild(em); return; }
+      // helper to normalize different stored formats (strings, swapped props, etc)
+      function looksLikeCode(s){ if(!s || typeof s!=='string') return false; if(s.length>60) return true; // long strings are probably codes
+        // codes often have no spaces and contain many non-letter characters
+        const hasSpace = /\s/.test(s);
+        const nonAlpha = /[^A-Za-z0-9\-_=+\/.]/.test(s);
+        return (!hasSpace && nonAlpha) || (s.length>30 && !/[a-zA-Z\s]/.test(s));
+      }
+
+      function normalizeCommunityItem(it){
+        if(typeof it==='string') return { name: 'Unnamed', code: it };
+        if(!it) return { name: 'Unnamed', code: '' };
+        const name = (it.name||'').toString();
+        const code = (it.code||'').toString();
+        if(looksLikeCode(name) && !looksLikeCode(code) && code.length>0){ return { name: code, code: name }; }
+        return { name: name || (code? 'Unnamed': ''), code };
+      }
+
+      list.forEach((it, idx)=>{
+        const item = normalizeCommunityItem(it);
+        const row = document.createElement('div'); row.className='community-row'; row.style.padding='8px'; row.style.borderRadius='6px'; row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.gap='8px'; row.style.cursor='pointer'; row.style.border='1px solid rgba(255,255,255,0.02)';
+        row.setAttribute('data-code', item.code);
+        const left = document.createElement('div'); left.style.flex='1'; const name = document.createElement('div'); name.textContent=item.name || 'Unnamed'; name.style.fontWeight='600'; const codeSmall = document.createElement('div'); codeSmall.textContent = (item.code||'').slice(0,60) + ((item.code||'').length>60? '...':''); codeSmall.style.fontSize='12px'; codeSmall.style.color='var(--muted)'; left.appendChild(name); left.appendChild(codeSmall);
+        const right = document.createElement('div'); right.style.display='flex'; right.style.gap='6px';
+  const loadBtn = document.createElement('button'); loadBtn.textContent='Load'; loadBtn.style.padding='6px 10px'; loadBtn.onclick = (ev)=>{ ev.stopPropagation(); const parsed = parseCompactSaveString(item.code); if(parsed){ loadFromSaveObject(parsed); try{ localStorage.setItem('stardust_save_v1', item.code);}catch(e){} closeCommunityModal(); } else { alert('Invalid code'); } };
+        const delBtn = document.createElement('button'); delBtn.textContent='Delete'; delBtn.style.padding='6px 10px'; delBtn.onclick = (ev)=>{ ev.stopPropagation(); if(!confirm('Delete this community save?')) return; const arr=_getCommunityList(); arr.splice(idx,1); _setCommunityList(arr); renderCommunityList(); };
+        right.appendChild(loadBtn); right.appendChild(delBtn);
+
+        row.appendChild(left); row.appendChild(right);
+        row.addEventListener('click', onRowClick);
+        wrap.appendChild(row);
+      });
+    }
+
+    m._renderCommunityList = renderCommunityList;
+  }
+
+  const listTa = document.getElementById('community-list');
+  try{ const mEl = document.getElementById('stardust-community-modal'); if(mEl){ mEl.classList.remove('closing'); mEl.classList.add('open'); mEl.style.display='flex'; mEl.setAttribute('aria-hidden','false'); const render = mEl._renderCommunityList || function(){}; render(); setTimeout(()=>{ const inp = document.getElementById('community-add-name'); if(inp) inp.focus(); },120); } }catch(e){}
+}
+
+function closeCommunityModal(){ const m=document.getElementById('stardust-community-modal'); if(!m) return; m.classList.add('closing'); m.classList.remove('open'); m.setAttribute('aria-hidden','true'); const onAnim=(e)=>{ if(e.animationName==='stardustFadeOut' || e.animationName==='stardustSlideUp'){ m.style.display='none'; m.classList.remove('closing'); m.removeEventListener('animationend', onAnim); } }; m.addEventListener('animationend', onAnim); }
+
+
+(function seedInitialCommunity(){
+  const initial = '1|-285.88,313.03,0.61|0,-5,3,1,0,0;0,-4,3,1,0,0;0,-3,3,1,0,0;0,-2,3,1,0,0;0,-1,3,1,0,0;0,0,3,1,0,0;0,-5,4,1,0,0;0,-4,4,1,0,0;0,-3,4,1,0,0;0,-2,4,1,0,0;0,-1,4,1,0,0;0,-5,5,1,0,0;0,-4,5,1,0,0;0,-3,5,1,0,0;0,-2,5,1,0,0;0,-1,5,1,0,0;0,0,5,1,0,0;0,-5,6,1,0,0;0,-4,6,1,0,0;0,-3,6,1,0,0;0,-2,6,1,0,0;0,0,6,1,0,0;11,-6,2,1,0,0;13,-6,6,1,0,0;12,-5,2,1,0,0;12,-5,6,1,0,0;12,-4,2,1,0,0;12,-4,6,1,0,0;12,-3,2,1,0,0;12,-3,6,1,0,0;12,-2,2,1,0,0;12,-2,6,1,0,0;12,-1,2,1,0,0;12,0,2,1,0,0;10,0,6,1,0,0;13,-6,3,1,0,0;13,0,3,1,0,0;13,-6,4,1,0,0;13,-6,5,1,0,0;13,0,5,1,0,0;0,4,4,1,0,0;0,5,4,1,0,0;0,6,4,1,0,0;0,7,4,1,0,0;0,8,4,1,0,0;0,9,4,1,0,0;0,3,5,1,0,0;0,4,5,1,0,0;0,5,5,1,0,0;0,6,5,1,0,0;0,7,5,1,0,0;0,8,5,1,0,0;0,9,5,1,0,0;0,3,6,1,0,0;0,4,6,1,0,0;0,5,6,1,0,0;0,6,6,1,0,0;0,7,6,1,0,0;0,8,6,1,0,0;0,9,6,1,0,0;0,3,7,1,0,0;0,4,7,1,0,0;0,5,7,1,0,0;0,6,7,1,0,0;0,7,7,1,0,0;0,8,7,1,0,0;0,9,7,1,0,0;0,3,8,1,0,0;0,4,8,1,0,0;0,5,8,1,0,0;0,6,8,1,0,0;0,7,8,1,0,0;0,8,8,1,0,0;0,9,8,1,0,0;11,2,3,1,0,0;13,2,8,1,0,0;12,3,3,1,0,0;12,3,8,1,0,0;12,4,3,1,0,0;12,4,8,1,0,0;12,5,3,1,0,0;12,5,8,1,0,0;12,6,3,1,0,0;12,6,8,1,0,0;12,7,3,1,0,0;12,7,8,1,0,0;12,8,3,1,0,0;12,8,8,1,0,0;12,9,3,1,0,0;10,9,8,1,0,0;13,9,4,1,0,0;13,2,5,1,0,0;13,9,5,1,0,0;13,2,6,1,0,0;13,9,6,1,0,0;13,2,7,1,0,0;13,9,7,1,0,0;7,2,4,1,0,0;7,1,4,1,0,0;8,-5,8,1,0,0;8,-4,8,1,0,0;8,-3,8,1,0,0;8,-4,9,1,0,0;8,-5,9,1,0,0;8,-3,9,1,0,0;7,-1,6,1,1,0;9,-4,4,1,1,0;4,5,4,1,0,0;20,-1,3,1,0,0;21,8,4,1,1,0;22,-5,11,1,0,0;22,-4,11,1,0,0;22,-3,11,1,0,0;23,-5,12,1,0,0;24,-5,14,1,0,0;24,-4,14,1,0,0;24,-3,14,1,0,0;25,3,7,1,0,0;25,3,6,1,0,0;25,4,7,1,0,0;25,4,6,1,0,0;25,10,4,1,0,0;25,10,5,1,0,0;25,10,6,1,0,0;25,10,7,1,0,0;25,10,8,1,0,0;25,11,4,1,0,0;25,11,5,1,0,0;25,11,6,1,0,0;25,11,7,1,0,0;25,11,8,1,0,0;26,8,7,1,0,0;26,7,7,1,0,0;26,-5,3,1,0,0;26,-5,4,1,0,0;26,-5,5,1,0,0;26,8,6,1,0,0;-1,-39,-22,1,0,0;-1,-39,15,1,0,0;-1,-37,-17,1,1,0;-1,-37,25,1,1,0;-1,-35,-33,1,1,0;-1,-35,-24,1,1,0;-1,-32,1,1,1,0;-1,-26,39,1,0,0;-1,-25,2,1,0,0;-1,-23,-26,1,0,0;-1,-22,-25,1,1,0;-1,-19,30,1,0,0;-1,-17,-8,1,1,0;-1,-14,19,1,1,0;-1,-13,0,1,0,0;-1,-13,6,1,1,0;-1,-12,-26,1,0,0;-1,-10,-29,1,0,0;-1,-8,12,1,0,0;-1,-5,-17,1,0,0;-1,-4,-17,1,0,0;-1,-2,-10,1,1,0;-1,0,0,1,0,0;-1,2,-26,1,0,0;-1,3,48,1,1,0;-1,6,-11,1,0,0;-1,6,31,1,1,0;-1,8,4,1,0,0;-1,17,31,1,0,0;-1,18,-12,1,1,0;-1,19,-15,1,0,0;-1,19,-3,1,1,0;-1,20,39,1,0,0;-1,21,9,1,1,0;-1,21,28,1,1,0;-1,24,-35,1,0,0;-1,24,-34,1,1,0;-1,25,-3,1,1,0;-1,26,8,1,0,0;-1,27,0,1,0,0;-1,30,25,1,0,0;-1,32,13,1,0,0;-1,33,4,1,1,0;-1,36,23,1,1,0;-1,39,-3,1,1,0;-1,44,24,1,1,0;-1,-41,-31,1,0,0;-1,-40,-4,1,1,0;-1,-40,18,1,1,0;-1,-40,20,1,1,0;-1,-40,31,1,1,0;-1,-39,13,1,0,0;-1,-38,-8,1,1,0;-1,-37,-25,1,1,0;-1,-37,-20,1,0,0;-1,-37,-18,1,0,0;-1,-37,40,1,1,0;-1,-36,-10,1,1,0;-1,-36,45,1,1,0;-1,-36,47,1,1,0;-1,-35,-7,1,0,0;-1,-34,16,1,0,0;-1,-34,38,1,1,0;-1,-33,-26,1,1,0;-1,-33,3,1,1,0;-1,-33,4,1,1,0;-1,-33,18,1,0,0;-1,-33,48,1,1,0;-1,-33,50,1,1,0;-1,-33,51,1,0,0;-1,-32,-37,1,1,0;-1,-32,-36,1,1,0;-1,-32,-22,1,1,0;-1,-32,18,1,1,0;-1,-32,23,1,0,0;-1,-31,-9,1,0,0;-1,-31,45,1,0,0;-1,-31,51,1,0,0;-1,-30,9,1,0,0;-1,-29,7,1,1,0;-1,-29,20,1,1,0;-1,-29,31,1,0,0;-1,-28,-9,1,0,0;-1,-28,20,1,0,0;-1,-28,33,1,0,0;-1,-28,48,1,1,0;-1,-27,-23,1,0,0;-1,-25,-3,1,0,0;-1,-25,2,1,1,0;-1,-24,-33,1,0,0;-1,-24,14,1,0,0;-1,-24,23,1,1,0;-1,-23,-10,1,1,0;-1,-23,17,1,0,0;-1,-22,-15,1,1,0;-1,-22,3,1,0,0;-1,-22,19,1,1,0;-1,-21,-15,1,0,0;-1,-21,-3,1,1,0;-1,-21,12,1,1,0;-1,-20,-10,1,1,0;-1,-20,11,1,0,0;-1,-19,45,1,1,0;-1,-18,27,1,0,0;-1,-18,44,1,1,0;-1,-17,-36,1,0,0;-1,-17,-17,1,1,0;-1,-17,33,1,1,0;-1,-16,-26,1,0,0;-1,-16,6,1,0,0;-1,-16,23,1,0,0;-1,-15,1,1,0,0;-1,-15,31,1,1,0;-1,-15,49,1,1,0;-1,-14,-20,1,0,0;-1,-14,-17,1,1,0;-1,-14,-8,1,1,0;-1,-14,8,1,0,0;-1,-14,14,1,0,0;-1,-13,-36,1,1,0;-1,-13,-35,1,1,0;-1,-13,-27,1,1,0;-1,-13,11,1,1,0;-1,-13,28,1,0,0;-1,-12,-33,1,1,0;-1,-12,-15,1,1,0;-1,-12,5,1,1,0;-1,-12,43,1,0,0;-1,-10,-35,1,0,0;-1,-10,-29,1,1,0;-1,-9,-28,1,0,0;-1,-9,25,1,1,0;-1,-8,-31,1,1,0;-1,-8,-28,1,0,0;-1,-8,21,1,1,0;-1,-8,49,1,0,0;-1,-8,51,1,1,0;-1,-7,-32,1,1,0;-1,-7,-16,1,0,0;-1,-7,17,1,0,0;-1,-7,20,1,0,0;-1,-7,38,1,0,0;-1,-6,-21,1,0,0;-1,-5,18,1,1,0;-1,-5,20,1,1,0;-1,-5,51,1,1,0;-1,-4,-19,1,1,0;-1,-4,32,1,1,0;-1,-3,24,1,0,0;-1,-2,-5,1,1,0;-1,-2,-3,1,0,0;-1,-2,25,1,1,0;-1,-1,-34,1,0,0;-1,-1,14,1,0,0;-1,-1,17,1,0,0;-1,-1,47,1,1,0;-1,0,50,1,0,0;-1,1,-21,1,1,0;-1,2,-31,1,0,0;-1,2,-4,1,0,0;-1,2,30,1,1,0;-1,3,-8,1,1,0;-1,3,1,1,1,0;-1,3,14,1,1,0;-1,4,-21,1,1,0;-1,4,-18,1,1,0;-1,4,-11,1,0,0;-1,4,31,1,1,0;-1,5,5,1,0,0;-1,5,20,1,0,0;-1,5,42,1,0,0;-1,6,-38,1,1,0;-1,6,-17,1,1,0;-1,6,-2,1,0,0;-1,6,26,1,0,0;-1,7,18,1,1,0;-1,7,24,1,1,0;-1,7,49,1,0,0;-1,8,-16,1,1,0;-1,8,-12,1,0,0;-1,8,17,1,0,0;-1,8,30,1,0,0;-1,9,28,1,1,0;-1,9,31,1,0,0;-1,9,32,1,1,0;-1,10,3,1,0,0;-1,10,42,1,0,0;-1,11,-7,1,1,0;-1,11,-3,1,0,0;-1,11,29,1,0,0;-1,11,34,1,1,0;-1,11,44,1,1,0;-1,12,-12,1,1,0;-1,12,-4,1,1,0;-1,12,-2,1,1,0;-1,13,34,1,1,0;-1,13,41,1,1,0;-1,13,48,1,1,0;-1,14,24,1,0,0;-1,15,-13,1,0,0;-1,15,-8,1,0,0;-1,15,-1,1,1,0;-1,15,5,1,1,0;-1,15,15,1,1,0;-1,15,32,1,1,0;-1,16,-38,1,1,0;-1,16,-23,1,1,0;-1,16,50,1,1,0;-1,17,-13,1,0,0;-1,17,-11,1,1,0;-1,17,45,1,1,0;-1,19,36,1,0,0;-1,20,-6,1,0,0;-1,20,34,1,0,0;-1,20,38,1,0,0;-1,21,-33,1,1,0;-1,21,16,1,1,0;-1,22,-24,1,1,0;-1,22,-14,1,0,0;-1,22,-9,1,1,0;-1,22,-8,1,1,0;-1,22,43,1,0,0;-1,22,44,1,1,0;-1,23,-34,1,1,0;-1,23,-11,1,1,0;-1,23,2,1,0,0;-1,24,-27,1,1,0;-1,24,-15,1,0,0;-1,24,-10,1,1,0;-1,24,6,1,1,0;-1,24,9,1,1,0;-1,24,30,1,1,0;-1,25,-33,1,0,0;-1,25,15,1,0,0;-1,26,-35,1,0,0;-1,26,11,1,1,0;-1,26,14,1,1,0;-1,27,-32,1,1,0;-1,27,-19,1,1,0;-1,27,-15,1,0,0;-1,27,13,1,1,0;-1,27,28,1,0,0;-1,29,-27,1,1,0;-1,29,25,1,1,0;-1,29,31,1,1,0;-1,30,43,1,0,0;-1,31,-21,1,1,0;-1,31,-4,1,0,0;-1,32,-29,1,0,0;-1,32,-8,1,0,0;-1,32,-3,1,1,0;-1,32,13,1,0,0;-1,32,39,1,1,0;-1,33,-19,1,0,0;-1,33,15,1,1,0;-1,33,42,1,0,0;-1,34,40,1,0,0;-1,35,-26,1,1,0;-1,35,19,1,1,0;-1,36,-1,1,1,0;-1,37,-33,1,1,0;-1,37,-25,1,0,0;-1,37,49,1,0,0;-1,38,-25,1,1,0;-1,38,-5,1,0,0;-1,38,1,1,1,0;-1,38,21,1,1,0;-1,39,-10,1,0,0;-1,39,-7,1,0,0;-1,40,-38,1,0,0;-1,40,-27,1,0,0;-1,40,39,1,1,0;-1,41,-5,1,0,0;-1,42,-22,1,0,0;-1,43,-22,1,0,0;-1,43,-7,1,1,0;-1,44,9,1,0,0;-1,44,37,1,0,0;-1,45,-38,1,0,0;-1,45,-24,1,0,0;-1,46,32,1,1,0;-1,46,51,1,0,0;-1,47,10,1,0,0;-1,47,23,1,0,0;-1,48,-12,1,1,0;-1,48,-11,1,0,0;-1,48,0,1,0,0;-1,48,3,1,1,0;-1,48,8,1,0,0;-1,-38,52,1,1,0;-1,-12,52,1,0,0;-1,7,52,1,1,0;-1,-40,14,1,0,0;-1,-40,50,1,0,0;-1,-42,40,1,1,0;-1,-42,42,1,0,0;14,-4,3,1,0,0;14,-3,3,1,0,0;14,-2,3,1,0,0;0,6,11,1,0,0;0,7,11,1,0,0;0,8,11,1,0,0;0,9,11,1,0,0;0,5,12,1,0,0;0,6,12,1,0,0;0,7,12,1,0,0;0,8,12,1,0,0;0,9,12,1,0,0;0,5,13,1,0,0;0,6,13,1,0,0;0,7,13,1,0,0;0,8,13,1,0,0;0,9,13,1,0,0;0,4,14,1,0,0;0,5,14,1,0,0;0,6,14,1,0,0;0,7,14,1,0,0;0,8,14,1,0,0;0,9,14,1,0,0;11,3,10,1,0,0;13,3,14,1,0,0;12,4,10,1,0,0;12,4,14,1,0,0;12,5,10,1,0,0;12,5,14,1,0,0;12,6,10,1,0,0;12,6,14,1,0,0;12,7,10,1,0,0;12,7,14,1,0,0;12,8,10,1,0,0;12,8,14,1,0,0;12,9,10,1,0,0;10,9,14,1,0,0;13,3,11,1,0,0;13,9,11,1,0,0;13,3,12,1,0,0;13,9,12,1,0,0;13,3,13,1,0,0;13,9,13,1,0,0;5,6,11,1,0,0;5,7,11,1,0,0;5,8,11,1,0,0;5,5,12,1,0,0;5,6,12,1,0,0;5,7,12,1,0,0;5,8,12,1,0,0;5,5,13,1,0,0;5,6,13,1,0,0;5,7,13,1,0,0;5,8,13,1,0,0;24,-5,15,1,0,0;24,-4,15,1,0,0;24,-3,15,1,0,0;21,-4,5,1,0,0;21,5,11,1,1,0;25,12,4,1,1,0;25,13,4,1,1,0;25,14,4,1,1,0;25,15,4,1,1,0;25,12,5,1,1,0;25,13,5,1,1,0;25,14,5,1,1,0;25,15,5,1,1,0;25,12,6,1,1,0;25,13,6,1,1,0;25,14,6,1,1,0;25,15,6,1,1,0;25,12,7,1,1,0;25,13,7,1,1,0;25,14,7,1,1,0;25,15,7,1,1,0;25,12,8,1,1,0;25,13,8,1,1,0;25,14,8,1,1,0;25,15,8,1,1,0;27,4,11,1,1,0;27,4,12,1,1,0;27,4,13,1,1,0';
+  try{
+    const arr = _getCommunityList();
+    const idx = arr.findIndex(i => (typeof i === 'string' && i === initial) || (i && i.code === initial));
+    if(idx !== -1){
+      const existing = arr[idx];
+      if(typeof existing === 'string'){
+        arr[idx] = { name: "Crow's Nest", code: initial };
+        _setCommunityList(arr);
+      }else if(!existing.name || existing.name.toString().trim()===''){
+        arr[idx] = { name: "Crow's Nest", code: initial };
+        _setCommunityList(arr);
+      }
+    }else{
+      arr.unshift({ name: "Crow's Nest", code: initial });
+      _setCommunityList(arr);
+    }
+  }catch(e){}
+})();
 
 tryAutoLoadFromLocalStorage();
 
