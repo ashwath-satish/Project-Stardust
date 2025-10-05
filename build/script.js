@@ -802,31 +802,7 @@ function drawImageOnTile(gx, gy, varData, alpha = 1) {
     ctx.scale(-1, 1);
     ctx.drawImage(img, -w / 2, drawY, w, h);
   } else {
-    const aid = varData.assetId || (varData.id && varData.id.split && varData.id.split('_')[0]);
-    const isWall = isWallAsset(aid || '');
-
-    if(isWall){
-      try{
-        const off = document.createElement('canvas');
-        off.width = Math.max(1, Math.round(w));
-        off.height = Math.max(1, Math.round(h));
-        const octx = off.getContext('2d');
-        octx.drawImage(img, 0, 0, img.width, img.height, 0, 0, off.width, off.height);
-        const idata = octx.getImageData(0,0,off.width,off.height);
-        const data = idata.data;
-        for(let i=0;i<data.length;i+=4){
-          const r = data[i], g = data[i+1], b = data[i+2];
-          const gray = Math.round(0.299*r + 0.587*g + 0.114*b);
-          data[i]=gray; data[i+1]=gray; data[i+2]=gray;
-        }
-        octx.putImageData(idata,0,0);
-        ctx.drawImage(off, drawX, drawY, w, h);
-      }catch(e){
-        ctx.drawImage(img, drawX, drawY, w, h);
-      }
-    } else {
-      ctx.drawImage(img, drawX, drawY, w, h);
-    }
+    ctx.drawImage(img, drawX, drawY, w, h);
   }
   ctx.restore();
 }
