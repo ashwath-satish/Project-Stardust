@@ -6,18 +6,15 @@
   <link id="stardust-stylesheet" rel="stylesheet" href="styles.css" />
   <script>
     (function(){
-      // generate a short random version token to bust cache on CSS and JS
       var v = Date.now().toString(36) + Math.random().toString(36).slice(2,8);
       window.__stardust_v = v;
       try{
         var link = document.getElementById('stardust-stylesheet');
         if(link){
-          // replace href with a cache-busted version
           var base = link.getAttribute('href').split('?')[0];
           link.href = base + '?v=' + v;
         }
       }catch(e){
-        // silent fallback
       }
     })();
   </script>
@@ -50,6 +47,7 @@
         <li>Press E = face left (default)</li>
         <li>Press Q = face right</li>
         <li>Press P / O = layer up / down (1-5)</li>
+        <p></p>Some code has been AI assisted.</p>
       </ul>
     </div>
   </div>
