@@ -387,8 +387,19 @@ const ASSETS = [
   }
 ];
 
-const STARTING_MONEY = 125000;
-let money = STARTING_MONEY;
+var STARTING_MONEY = 125000;
+var STARTING_WEIGHT_LIMIT = 450000;
+try{
+  var sp = window.__stardust_params || {};
+  if(sp && typeof sp === 'object'){
+    if(sp.budget && !isNaN(Number(sp.budget))){ STARTING_MONEY = Math.max(0, Math.floor(Number(sp.budget))); }
+    if(sp.weight && !isNaN(Number(sp.weight))){ STARTING_WEIGHT_LIMIT = Math.max(0, Math.floor(Number(sp.weight))); }
+    if(sp.people && !isNaN(Number(sp.people))){ window.__stardust_people = Math.max(1, Math.floor(Number(sp.people))); }
+    window.__stardust_applied = { budget: STARTING_MONEY, weight: STARTING_WEIGHT_LIMIT, people: window.__stardust_people || null };
+  }
+}catch(e){ }
+
+var money = STARTING_MONEY;
 const placed = [];
 let selectedItem = ASSETS[0];
 let selectedVariation = selectedItem.variations[0];
@@ -1479,29 +1490,57 @@ function detectRooms(){
 function computeRequirementsStatus(){
   const status = {};
 
+  const people = (window.__stardust_people && !isNaN(Number(window.__stardust_people))) ? Math.max(1, Math.floor(Number(window.__stardust_people))) : 5;
+  const weightLimitConfigured = (typeof STARTING_WEIGHT_LIMIT === 'number' && !isNaN(STARTING_WEIGHT_LIMIT)) ? STARTING_WEIGHT_LIMIT : 450000;
+
   const totalWeight = placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); const asset = getAssetById(aid); return s + (asset && asset.weight? asset.weight : 0); }, 0);
-  status.weightLimit = totalWeight <= 450000;
+  status.weightLimit = totalWeight <= weightLimitConfigured;
   status._totalWeight = totalWeight;
+  status._weightLimitConfigured = weightLimitConfigured;
 
   const totalGen = placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); const asset = getAssetById(aid); return s + (asset && asset.energyGeneration? asset.energyGeneration : 0); }, 0);
   const totalCons = placed.reduce((s,p)=>{ const aid = p.assetId || (p.var && p.var.id && p.var.id.split('_')[0]); const asset = getAssetById(aid); return s + (asset && asset.energyConsumption? asset.energyConsumption : 0); }, 0);
   status.energy = (totalGen - totalCons) >= 100;
   status._energyNet = totalGen - totalCons;
 
-  status.rooms = detectRooms() >= 2;
   status._rooms = detectRooms();
+  const requiredRooms = Math.max(2, Math.floor(people / 2));
+  status.rooms = status._rooms >= requiredRooms;
+  status._requiredRooms = requiredRooms;
 
-  status.blockLimit = placed.length <= 2500;
+  const requiredBlocks = Math.max(2500, Math.floor(weightLimitConfigured / 180));
+  status.blockLimit = placed.length <= requiredBlocks;
   status._blocks = placed.length;
+  status._requiredBlocks = requiredBlocks;
 
-  status.weights = getPlacedCountById('weight') >= 3;
-  status.farms = getPlacedCountById('farm') >= 5;
+  const reqWeights = Math.ceil(people / 2);
+  const reqFarms = people;
+  const reqFiltrations = people;
+  const reqMattresses = people;
+  const reqToilets = Math.ceil(people / 2);
+  const reqCanisters = people * 4;
+
+  status.weights = getPlacedCountById('weight') >= reqWeights;
+  status.farms = getPlacedCountById('farm') >= reqFarms;
   status.computerRadar = (getPlacedCountById('computer') >=1) && (getPlacedCountById('satellite') >=1);
-  status.toilets = getPlacedCountById('toilet') >= 3;
-  status.filtrations = getPlacedCountById('filtration') >= 5;
-  status.canisters = getPlacedCountById('canisters') >= 20;
+  status.toilets = getPlacedCountById('toilet') >= reqToilets;
+  status.filtrations = getPlacedCountById('filtration') >= reqFiltrations;
+  status.canisters = getPlacedCountById('canisters') >= reqCanisters;
   status.stove = getPlacedCountById('stove') >= 1;
-  status.mattresses = getPlacedCountById('mattress') >= 5;
+  status.mattresses = getPlacedCountById('mattress') >= reqMattresses;
+
+  status._required = {
+    people,
+    reqWeights,
+    reqFarms,
+    reqFiltrations,
+    reqMattresses,
+    reqToilets,
+    reqCanisters,
+    requiredRooms,
+    requiredBlocks,
+    weightLimitConfigured
+  };
 
   return status;
 }
@@ -1511,6 +1550,22 @@ function updateRequirementsPanel(){
   const list = document.getElementById('requirements-list'); if(!list) return;
   const st = computeRequirementsStatus();
 
+  const required = st._required || {};
+  const dynamicLabels = {
+    weightLimit: 'Weight ≤ ' + (st._weightLimitConfigured || 450000) + ' kg',
+    energy: 'Net energy ≥ 100',
+    rooms: 'At least ' + (required.requiredRooms || 2) + ' rooms',
+    blockLimit: 'Blocks placed ≤ ' + (st._required ? st._required.requiredBlocks : 2500),
+    weights: 'At least ' + (required.reqWeights || 3) + ' weights',
+    farms: 'At least ' + (required.reqFarms || 5) + ' farms',
+    computerRadar: 'Computer and Radar',
+    toilets: 'At least ' + (required.reqToilets || 3) + ' toilets',
+    filtrations: 'At least ' + (required.reqFiltrations || 5) + ' filtrations',
+    canisters: 'At least ' + (required.reqCanisters || 20) + ' canisters',
+    stove: 'At least 1 stove',
+    mattresses: 'At least ' + (required.reqMattresses || 5) + ' mattresses'
+  };
+
   const items = REQUIREMENTS.map(r=>{
     const fulfilled = !!st[r.id];
     const extra = {};
@@ -1518,7 +1573,8 @@ function updateRequirementsPanel(){
     if(r.id === 'energy') extra.count = 'Net: '+(st._energyNet||0);
     if(r.id === 'rooms') extra.count = (st._rooms||0)+' rooms';
     if(r.id === 'blockLimit') extra.count = (st._blocks||0)+' blocks';
-    return Object.assign({}, r, { fulfilled, extra });
+    const label = dynamicLabels[r.id] || r.label;
+    return Object.assign({}, r, { label, fulfilled, extra });
   });
 
   items.sort((a,b)=>{ if(a.fulfilled===b.fulfilled) return a.label.localeCompare(b.label); return a.fulfilled?1:-1; });

@@ -23,6 +23,38 @@
             <h1 style="margin: 0 10px 0 0;">Project Stardust</h1>
             <img src="sparkles.png" alt="" style="height: 1.5em;">
         </div>
+        <div class="preview-card">
+            <div class="preview-shadow" aria-hidden="true"></div>
+            <img src="preview.png" alt="Preview">
+        </div>
+                <section class="mission-panel">
+                    <div class="mission-desc">Users must meet a set of requirements that make sure the habitat is not too heavy, too expensive, and to make sure it contains crucial needs like energy generation, communication, waste management, filtration, etc. This project is beneficial compared to other existing options because, unlike many tools for these purposes, our software is easy to use for all users. Most software that is used for 3D design/building uses complex architecture or requires high-level knowledge, but our software is simple, while still being able to bring in complexity and structure. We aim to make knowledge and design usable by all people, regardless of prior knowledge. Our team considered how to balance simplicity and realistic approaches, coming up with a creative balance to best optimize the project for ALL users.</div>
+                    <form id="missionForm" class="mission-form" onsubmit="return false;">
+                        <div class="field">
+                            <label>People on mission</label>
+                            <input id="peopleInput" type="number" min="1" placeholder="5" />
+                        </div>
+                        <div class="field">
+                            <label>Budget</label>
+                            <input id="budgetInput" type="number" min="0" placeholder="125000" />
+                        </div>
+                        <div class="field">
+                            <label>Weight limit</label>
+                            <input id="weightInput" type="number" min="0" placeholder="450000" />
+                        </div>
+                        <div class="preview-req">
+                            <h4>Mission requirements preview</h4>
+                            <ul id="requirementsList">
+                            </ul>
+                        </div>
+                        <div class="launch-row">
+                            <button id="launchBtn" class="launch-btn" title="Launch mission">
+                                <img src="/launch.svg" alt="launch" />
+                                <span>Launch</span>
+                            </button>
+                        </div>
+                    </form>
+                </section>
 
         <script src="script.js" async defer></script>
         <script src="canvas.js"></script>

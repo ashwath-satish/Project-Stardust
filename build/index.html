@@ -87,7 +87,19 @@
   </div>
   <canvas id="isoCanvas"></canvas>
   <script>
-    (function(){ // we hate caches
+    (function(){
+      try{
+        var params = {};
+        var sp = (location.search||'').replace(/^\?/,'');
+        sp.split('&').forEach(function(pair){
+          if(!pair) return;
+          var kv = pair.split('=');
+          try{ params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]||''); }catch(e){}
+        });
+        window.__stardust_params = params;
+      }catch(e){}
+    })();
+    (function(){
       var v = window.__stardust_v || (Date.now().toString(36) + Math.random().toString(36).slice(2,8));
       var s = document.createElement('script');
       s.src = 'script.js?v=' + v;
